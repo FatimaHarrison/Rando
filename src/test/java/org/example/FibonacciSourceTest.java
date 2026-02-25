@@ -36,5 +36,12 @@ void testMainOutput() {
 
     assertEquals(expected, printed);
 }
+    @Test
+@org.junit.jupiter.api.Timeout(2)
+void fibonacci() {
+    assertEquals(55, FibonacciSource.fibonacci(10));
 }
+
+}
+
 
