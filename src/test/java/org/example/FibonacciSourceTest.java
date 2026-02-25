@@ -18,20 +18,23 @@ class FibonacciSourceTest {
     }
 
     @Test
-    void testMainOutput() {
-        // Capture console output
-        java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
-        System.setOut(new java.io.PrintStream(output));
+void testMainOutput() {
+    // Save original System.out
+    PrintStream originalOut = System.out;
 
-        // Run main
-        FibonacciSource.main(new String[]{});
+    ByteArrayOutputStream output = new ByteArrayOutputStream();
+    System.setOut(new PrintStream(output));
 
-        // Convert output to string
-        String printed = output.toString().trim();
+    // Run main
+    FibonacciSource.main(new String[]{});
 
-        // Expected output
-        String expected = "The 10th term of the Fibonacci sequence is 55.";
+    // Restore System.out
+    System.setOut(originalOut);
 
-        assertEquals(expected, printed);
-    }
+    String printed = output.toString().trim();
+    String expected = "The 10th term of the Fibonacci sequence is 55.";
+
+    assertEquals(expected, printed);
 }
+}
+
