@@ -23,7 +23,7 @@ class FibonacciSourceTest {
     }
 
     @Test
-    void testMainOutput() {
+    void testMainOutput() throws Exception {
         // Save original System.out
         PrintStream originalOut = System.out;
 
