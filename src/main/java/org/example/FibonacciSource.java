@@ -1,5 +1,5 @@
 package org.example;
-
+//A small change 
 //
 // Source code recreated from a .class file by IntelliJ IDEA
 // (powered by FernFlower decompiler)
