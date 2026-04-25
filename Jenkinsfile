@@ -7,16 +7,16 @@ pipeline {
     }
 
     parameters {
-        string(name: 'ROLLBACK_VERSION', defaultValue: '', description: 'Docker image tag to roll back to (e.g. 42)')
-        booleanParam(name: 'ROLLBACK', defaultValue: false, description: 'Check to perform a rollback instead of a new deployment')
+        string(name: 'ROLLBACK_VERSION', defaultValue: '', description: 'Git commit hash to roll back to')
+        booleanParam(name: 'ROLLBACK', defaultValue: false, description: 'Perform rollback instead of new deployment')
     }
 
     environment {
-        APP_NAME   = 'myapp'
-        REGISTRY   = 'registry.example.com'
-        STAGING    = 'ubuntu@staging-server'
-        PROD       = 'ubuntu@prod-server'
-        DOCKER_TAG = "${env.BUILD_NUMBER}"
+        WSL_USER = 'misst-1'
+        WSL_HOST = '172.17.0.1'
+        SSH_PORT = '6786'
+        STAGING_PATH = '/var/www/staging'
+        PROD_PATH = '/var/www/production'
     }
 
     stages {
@@ -24,7 +24,16 @@ pipeline {
         stage('Checkout') {
             steps {
                 echo "Checking out source code..."
-                git branch: 'main', url: 'https://github.com/your-org/your-repo.git'
+                git branch: 'main', url: 'https://github.com/FatimaHarrison/Rando.git'
+            }
+        }
+
+        stage('Test SSH') {
+            steps {
+                echo "Testing SSH connection to WSL..."
+                sshagent(['wsl-ssh']) {
+                    sh 'ssh -p 6786 misst-1@172.17.0.1 "echo connected"'
+                }
             }
         }
 
@@ -49,28 +58,16 @@ pipeline {
             }
         }
 
-        stage('Build & Push Docker Image') {
-            when { expression { !params.ROLLBACK } }
-            steps {
-                echo "Building Docker image..."
-                sh """
-          docker build -t ${APP_NAME}:${DOCKER_TAG} .
-          docker tag ${APP_NAME}:${DOCKER_TAG} ${REGISTRY}/${APP_NAME}:${DOCKER_TAG}
-          docker push ${REGISTRY}/${APP_NAME}:${DOCKER_TAG}
-        """
-            }
-        }
-
         stage('Deploy to Staging') {
             when { expression { !params.ROLLBACK } }
             steps {
                 echo "Deploying to STAGING..."
-                sh """
-          ssh ${STAGING} 'docker pull ${REGISTRY}/${APP_NAME}:${DOCKER_TAG}'
-          ssh ${STAGING} 'docker stop ${APP_NAME} || true'
-          ssh ${STAGING} 'docker rm ${APP_NAME} || true'
-          ssh ${STAGING} 'docker run -d --name ${APP_NAME} -p 9180:9180 ${REGISTRY}/${APP_NAME}:${DOCKER_TAG}'
-        """
+                sshagent(['wsl-ssh']) {
+                    sh """
+                        ssh -p ${SSH_PORT} ${WSL_USER}@${WSL_HOST} \\
+                        "cd ${STAGING_PATH} && git pull && docker compose up -d --build"
+                    """
+                }
             }
         }
 
@@ -78,9 +75,7 @@ pipeline {
             when { expression { !params.ROLLBACK } }
             steps {
                 echo "Running smoke tests against STAGING..."
-                sh """
-          curl -f http://staging-server:9180/health
-        """
+                sh "curl -f http://${WSL_HOST}:8081/health"
             }
         }
 
@@ -88,7 +83,7 @@ pipeline {
             when { expression { !params.ROLLBACK } }
             steps {
                 timeout(time: 30, unit: 'MINUTES') {
-                    input message: "Promote build ${DOCKER_TAG} to PRODUCTION?"
+                    input message: "Promote build to PRODUCTION?"
                 }
             }
         }
@@ -97,12 +92,12 @@ pipeline {
             when { expression { !params.ROLLBACK } }
             steps {
                 echo "Deploying to PRODUCTION..."
-                sh """
-          ssh ${PROD} 'docker pull ${REGISTRY}/${APP_NAME}:${DOCKER_TAG}'
-          ssh ${PROD} 'docker stop ${APP_NAME} || true'
-          ssh ${PROD} 'docker rm ${APP_NAME} || true'
-          ssh ${PROD} 'docker run -d --name ${APP_NAME} -p 9180:9180 ${REGISTRY}/${APP_NAME}:${DOCKER_TAG}'
-        """
+                sshagent(['wsl-ssh']) {
+                    sh """
+                        ssh -p ${SSH_PORT} ${WSL_USER}@${WSL_HOST} \\
+                        "cd ${PROD_PATH} && git pull && docker compose up -d --build"
+                    """
+                }
             }
         }
 
@@ -110,24 +105,21 @@ pipeline {
             when { expression { !params.ROLLBACK } }
             steps {
                 echo "Checking PRODUCTION health..."
-                sh """
-          curl -f http://prod-server:9180/health
-        """
+                sh "curl -f http://${WSL_HOST}:8080/health"
             }
         }
 
         // --- ROLLBACK PATH ---
-
-        stage('Rollback to Previous Version') {
+        stage('Rollback') {
             when { expression { params.ROLLBACK && params.ROLLBACK_VERSION?.trim() } }
             steps {
-                echo "Rolling back PRODUCTION to version: ${params.ROLLBACK_VERSION}"
-                sh """
-          ssh ${PROD} 'docker pull ${REGISTRY}/${APP_NAME}:${ROLLBACK_VERSION}'
-          ssh ${PROD} 'docker stop ${APP_NAME} || true'
-          ssh ${PROD} 'docker rm ${APP_NAME} || true'
-          ssh ${PROD} 'docker run -d --name ${APP_NAME} -p 9180:9180 ${REGISTRY}/${APP_NAME}:${ROLLBACK_VERSION}'
-        """
+                echo "Rolling back to commit: ${params.ROLLBACK_VERSION}"
+                sshagent(['wsl-ssh']) {
+                    sh """
+                        ssh -p ${SSH_PORT} ${WSL_USER}@${WSL_HOST} \\
+                        "cd ${PROD_PATH} && git fetch && git checkout ${params.ROLLBACK_VERSION} && docker compose up -d --build"
+                    """
+                }
             }
         }
 
@@ -135,9 +127,7 @@ pipeline {
             when { expression { params.ROLLBACK && params.ROLLBACK_VERSION?.trim() } }
             steps {
                 echo "Checking PRODUCTION health after rollback..."
-                sh """
-          curl -f http://prod-server:9180/health
-        """
+                sh "curl -f http://${WSL_HOST}:8080/health"
             }
         }
     }
@@ -147,10 +137,10 @@ pipeline {
             echo "Pipeline completed successfully."
         }
         failure {
-            echo "Pipeline failed. Check logs and consider triggering a rollback with a known good version."
+            echo "Pipeline failed. Check logs and consider triggering a rollback."
         }
         always {
-            echo "Build finished. See console output and test reports for details."
+            echo "Build finished."
         }
     }
 }
