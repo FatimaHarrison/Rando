@@ -13,7 +13,7 @@ pipeline {
 
     environment {
         APP_NAME   = 'myapp'
-        REGISTRY   = 'registry.example.com'
+        REGISTRY   = 'docker.io/fatiharri'
         STAGING    = 'ubuntu@staging-server'
         PROD       = 'ubuntu@prod-server'
         DOCKER_TAG = "${env.BUILD_NUMBER}"
