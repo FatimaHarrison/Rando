@@ -24,7 +24,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 echo "Checking out source code..."
-                git branch: 'main', url: 'https://github.com/your-org/your-repo.git'
+                git branch: 'main', url: 'https://github.com/FatimaHarrison/Rando.git'
             }
         }
 
@@ -32,7 +32,7 @@ pipeline {
             when { expression { !params.ROLLBACK } }
             steps {
                 echo "Building application..."
-                sh 'mvn clean package -DskipTests=false'
+                bat 'mvn clean package -DskipTests=false'
             }
             post {
                 always {
@@ -45,7 +45,7 @@ pipeline {
             when { expression { !params.ROLLBACK } }
             steps {
                 echo "Running static analysis..."
-                sh 'mvn -q -DskipTests=true verify'
+                bat 'mvn -q -DskipTests=true verify'
             }
         }
 
@@ -53,11 +53,11 @@ pipeline {
             when { expression { !params.ROLLBACK } }
             steps {
                 echo "Building Docker image..."
-                sh """
-          docker build -t ${APP_NAME}:${DOCKER_TAG} .
-          docker tag ${APP_NAME}:${DOCKER_TAG} ${REGISTRY}/${APP_NAME}:${DOCKER_TAG}
-          docker push ${REGISTRY}/${APP_NAME}:${DOCKER_TAG}
-        """
+                bat """
+                docker build -t %APP_NAME%:%DOCKER_TAG% .
+                docker tag %APP_NAME%:%DOCKER_TAG% %REGISTRY%/%APP_NAME%:%DOCKER_TAG%
+                docker push %REGISTRY%/%APP_NAME%:%DOCKER_TAG%
+                """
             }
         }
 
@@ -65,12 +65,12 @@ pipeline {
             when { expression { !params.ROLLBACK } }
             steps {
                 echo "Deploying to STAGING..."
-                sh """
-          ssh ${STAGING} 'docker pull ${REGISTRY}/${APP_NAME}:${DOCKER_TAG}'
-          ssh ${STAGING} 'docker stop ${APP_NAME} || true'
-          ssh ${STAGING} 'docker rm ${APP_NAME} || true'
-          ssh ${STAGING} 'docker run -d --name ${APP_NAME} -p 9180:9180 ${REGISTRY}/${APP_NAME}:${DOCKER_TAG}'
-        """
+                bat """
+                ssh %STAGING% "docker pull %REGISTRY%/%APP_NAME%:%DOCKER_TAG%"
+                ssh %STAGING% "docker stop %APP_NAME% || true"
+                ssh %STAGING% "docker rm %APP_NAME% || true"
+                ssh %STAGING% "docker run -d --name %APP_NAME% -p 9180:9180 %REGISTRY%/%APP_NAME%:%DOCKER_TAG%"
+                """
             }
         }
 
@@ -78,9 +78,7 @@ pipeline {
             when { expression { !params.ROLLBACK } }
             steps {
                 echo "Running smoke tests against STAGING..."
-                sh """
-          curl -f http://staging-server:9180/health
-        """
+                bat 'curl -f http://staging-server:9180/health'
             }
         }
 
@@ -97,12 +95,12 @@ pipeline {
             when { expression { !params.ROLLBACK } }
             steps {
                 echo "Deploying to PRODUCTION..."
-                sh """
-          ssh ${PROD} 'docker pull ${REGISTRY}/${APP_NAME}:${DOCKER_TAG}'
-          ssh ${PROD} 'docker stop ${APP_NAME} || true'
-          ssh ${PROD} 'docker rm ${APP_NAME} || true'
-          ssh ${PROD} 'docker run -d --name ${APP_NAME} -p 9180:9180 ${REGISTRY}/${APP_NAME}:${DOCKER_TAG}'
-        """
+                bat """
+                ssh %PROD% "docker pull %REGISTRY%/%APP_NAME%:%DOCKER_TAG%"
+                ssh %PROD% "docker stop %APP_NAME% || true"
+                ssh %PROD% "docker rm %APP_NAME% || true"
+                ssh %PROD% "docker run -d --name %APP_NAME% -p 9180:9180 %REGISTRY%/%APP_NAME%:%DOCKER_TAG%"
+                """
             }
         }
 
@@ -110,9 +108,7 @@ pipeline {
             when { expression { !params.ROLLBACK } }
             steps {
                 echo "Checking PRODUCTION health..."
-                sh """
-          curl -f http://prod-server:9180/health
-        """
+                bat 'curl -f http://prod-server:9180/health'
             }
         }
 
@@ -122,12 +118,12 @@ pipeline {
             when { expression { params.ROLLBACK && params.ROLLBACK_VERSION?.trim() } }
             steps {
                 echo "Rolling back PRODUCTION to version: ${params.ROLLBACK_VERSION}"
-                sh """
-          ssh ${PROD} 'docker pull ${REGISTRY}/${APP_NAME}:${ROLLBACK_VERSION}'
-          ssh ${PROD} 'docker stop ${APP_NAME} || true'
-          ssh ${PROD} 'docker rm ${APP_NAME} || true'
-          ssh ${PROD} 'docker run -d --name ${APP_NAME} -p 9180:9180 ${REGISTRY}/${APP_NAME}:${ROLLBACK_VERSION}'
-        """
+                bat """
+                ssh %PROD% "docker pull %REGISTRY%/%APP_NAME%:%ROLLBACK_VERSION%"
+                ssh %PROD% "docker stop %APP_NAME% || true"
+                ssh %PROD% "docker rm %APP_NAME% || true"
+                ssh %PROD% "docker run -d --name %APP_NAME% -p 9180:9180 %REGISTRY%/%APP_NAME%:%ROLLBACK_VERSION%"
+                """
             }
         }
 
@@ -135,9 +131,7 @@ pipeline {
             when { expression { params.ROLLBACK && params.ROLLBACK_VERSION?.trim() } }
             steps {
                 echo "Checking PRODUCTION health after rollback..."
-                sh """
-          curl -f http://prod-server:9180/health
-        """
+                bat 'curl -f http://prod-server:9180/health'
             }
         }
     }
