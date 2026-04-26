@@ -75,7 +75,7 @@ pipeline {
             when { expression { !params.ROLLBACK } }
             steps {
                 echo "Running smoke tests against STAGING..."
-                sh "curl -f http://localhost:8081/health"
+                sh "curl -f http://localhost:5600/health"
             }
         }
 
@@ -106,7 +106,7 @@ pipeline {
             when { expression { !params.ROLLBACK } }
             steps {
                 echo "Checking PRODUCTION health..."
-                sh "curl -f http://localhost:8080/health"
+                sh "curl -f http://localhost:5600/health"
             }
         }
 
