@@ -17,6 +17,9 @@ pipeline {
         // Local WSL deployment paths (NOT remote SSH)
         STAGING_PATH = '/var/www/staging'
         PROD_PATH    = '/var/www/production'
+
+        // Real WSL rootfs path for the Ubuntu distro
+        WSL_ROOT = '/mnt/c/Users/tutor/AppData/Local/wsl/{bb4ccb9f-df89-45ab-a2c2-261679a5d0c3}/rootfs'
     }
     stages {
         //CHECKOUT Source CODE
@@ -55,7 +58,7 @@ pipeline {
                 echo "Deploying build to STAGING environment..."
                 // Copy build artifacts into WSL staging folder
                 sh """
-                    cp -r target/* /mnt/c/Users/tutor/ubuntu${STAGING_PATH}/
+                    cp -r target/* ${WSL_ROOT}${STAGING_PATH}/
                 """
             }
         }
@@ -87,7 +90,7 @@ pipeline {
 
                 // Copy build artifacts into WSL production folder
                 sh """
-                    cp -r target/* /mnt/c/Users/tutor/ubuntu${PROD_PATH}/
+                    cp -r target/* ${WSL_ROOT}${PROD_PATH}/
                 """
             }
         }
@@ -112,7 +115,7 @@ pipeline {
                 """
                 //Copy rolled-back artifact into production
                 sh """
-                    cp -r target/* /mnt/c/Users/tutor/ubuntu${PROD_PATH}/
+                    cp -r target/* ${WSL_ROOT}${PROD_PATH}/
                 """
             }
         }
