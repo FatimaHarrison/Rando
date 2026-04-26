@@ -55,11 +55,11 @@ pipeline {
                 echo "Deploying build to STAGING environment..."
                 // Copy build artifacts into WSL staging folder
                 sh """
-                    cp -r target/* /mnt/wsl/Ubuntu${STAGING_PATH}/
+                    cp -r target/* /mnt/c/Users/tutor/ubuntu${STAGING_PATH}/
                 """
             }
         }
-                //STAGING SMOKE TESTS
+        //STAGING SMOKE TESTS
 
         stage('Staging Smoke Tests') {
             when { expression { !params.ROLLBACK } }
@@ -87,7 +87,7 @@ pipeline {
 
                 // Copy build artifacts into WSL production folder
                 sh """
-                    cp -r target/* /mnt/wsl/Ubuntu${PROD_PATH}/
+                    cp -r target/* /mnt/c/Users/tutor/ubuntu${PROD_PATH}/
                 """
             }
         }
@@ -112,7 +112,7 @@ pipeline {
                 """
                 //Copy rolled-back artifact into production
                 sh """
-                    cp -r target/* /mnt/wsl/Ubuntu${PROD_PATH}/
+                    cp -r target/* /mnt/c/Users/tutor/ubuntu${PROD_PATH}/
                 """
             }
         }
@@ -125,7 +125,6 @@ pipeline {
             }
         }
     }
-
     //POST-BUILD ACTIONS
     post {
         success {
