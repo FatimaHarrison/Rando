@@ -1,9 +1,10 @@
 pipeline {
 
-    agent any //Any available Jenkins agent to run the pipeline
+    agent any   // Run on any available Jenkins agent (Windows host)
+
     options {
-        timestamps() // Adding timestamps to console output for easier debugging
-        buildDiscarder(logRotator(numToKeepStr: '20'))   // Keep only the last 20 builds
+        timestamps()   // Add timestamps to console logs
+        buildDiscarder(logRotator(numToKeepStr: '20'))   // Keep last 20 builds
     }
     parameters {
         // Commit hash used when performing a rollback
@@ -13,135 +14,128 @@ pipeline {
         booleanParam(name: 'ROLLBACK', defaultValue: false, description: 'Perform rollback instead of new deployment')
     }
     environment {
-        // SSH credentials and deployment paths for WSL environment
-        WSL_USER = 'misst-1'
-        WSL_HOST = '172.17.0.1'
-        SSH_PORT = '6786'
+        // Local WSL deployment paths (NOT remote SSH)
         STAGING_PATH = '/var/www/staging'
-        PROD_PATH = '/var/www/production'
+        PROD_PATH    = '/var/www/production'
     }
     stages {
+        //CHECKOUT Source CODE
+
         stage('Checkout') {
             steps {
                 echo "Checking out source code..."
-                // Pull latest code from GitHub main branch
                 git branch: 'main', url: 'https://github.com/FatimaHarrison/Rando.git'
             }
         }
-        stage('Test SSH') {
-            steps {
-                echo "Testing SSH connection to WSL..."
-                // Use Jenkins credential 'wsl-ssh' to test remote connectivity
-                sshagent(['wsl-ssh']) {
-                    sh 'ssh -p 6786 misst-1@172.17.0.1 "echo connected"'
-                }
-            }
-        }
+        // BUILD APPLICATION (SKIPPED DURING ROLLBACK)
         stage('Build') {
-            when { expression { !params.ROLLBACK } }   // Skip build if rollback mode is enabled
+            when { expression { !params.ROLLBACK } }
             steps {
-                echo "Building application..."
-                // Run Maven clean + package, including tests
+                echo "Building application with Maven..."
                 sh 'mvn clean package -DskipTests=false'
             }
             post {
                 always {
-                    // Publish JUnit test results even if build fails
-                    junit 'target/surefire-reports/*.xml'
+                    junit 'target/surefire-reports/*.xml'   // Publish test results
                 }
             }
         }
+        //STATIC ANALYSIS SKIPPED DURING ROLLBACK
         stage('Static Analysis') {
-            when { expression { !params.ROLLBACK } }   // Skip static analysis during rollback
+            when { expression { !params.ROLLBACK } }
             steps {
                 echo "Running static analysis..."
-                // Run Maven verify phase (includes static code checks)
                 sh 'mvn -q -DskipTests=true verify'
             }
         }
+        //DEPLOY STAGING
         stage('Deploy to Staging') {
-            when { expression { !params.ROLLBACK } }   // Only deploy if not rolling back
+            when { expression { !params.ROLLBACK } }
             steps {
-                echo "Deploying to STAGING..."
-                sshagent(['wsl-ssh']) {
-                    // SSH into WSL, pull latest code, rebuild and restart Docker containers
-                    sh """
-                        ssh -p ${SSH_PORT} ${WSL_USER}@${WSL_HOST} \\
-                        "cd ${STAGING_PATH} && git pull && docker compose up -d --build"
-                    """
-                }
+                echo "Deploying build to STAGING environment..."
+                // Copy build artifacts into WSL staging folder
+                sh """
+                    cp -r target/* /mnt/wsl/Ubuntu${STAGING_PATH}/
+                """
             }
         }
+                //STAGING SMOKE TESTS
+
         stage('Staging Smoke Tests') {
             when { expression { !params.ROLLBACK } }
             steps {
                 echo "Running smoke tests against STAGING..."
-                // Hit staging health endpoint to verify deployment
-                sh "https://${WSL_HOST}:8081/health"
+
+                // Hit local staging endpoint
+                sh "curl -f http://localhost:8081/health"
             }
         }
+        //MANUAL APPROVAL BEFORE PRODUCTION
         stage('Approve Production Deployment') {
             when { expression { !params.ROLLBACK } }
             steps {
-                // Manual approval gate before production deployment
                 timeout(time: 30, unit: 'MINUTES') {
                     input message: "Promote build to PRODUCTION?"
                 }
             }
         }
+        //DEPLOY TO PRODUCTION (LOCAL WSL COPY)
         stage('Deploy to Production') {
             when { expression { !params.ROLLBACK } }
             steps {
-                echo "Deploying to PRODUCTION..."
-                sshagent(['wsl-ssh']) {
-                    // Pull latest code and rebuild production Docker containers
-                    sh """
-                        ssh -p ${SSH_PORT} ${WSL_USER}@${WSL_HOST} \\
-                        "cd ${PROD_PATH} && git pull && docker compose up -d --build"
-                    """
-                }
+                echo "Deploying build to PRODUCTION environment..."
+
+                // Copy build artifacts into WSL production folder
+                sh """
+                    cp -r target/* /mnt/wsl/Ubuntu${PROD_PATH}/
+                """
             }
         }
+        //PRODUCTION HEALTH CHECK
         stage('Production Health Check') {
             when { expression { !params.ROLLBACK } }
             steps {
                 echo "Checking PRODUCTION health..."
-                // Hit production health endpoint
-                sh "https://${WSL_HOST}:8080/health"
+                sh "curl -f http://localhost:8080/health"
             }
         }
-        // ROLLBACK EXECUTION PATH
+        //ROLLBACK EXECUTION PATH
         stage('Rollback') {
             when { expression { params.ROLLBACK && params.ROLLBACK_VERSION?.trim() } }
             steps {
                 echo "Rolling back to commit: ${params.ROLLBACK_VERSION}"
-                sshagent(['wsl-ssh']) {
-                    // Checkout specific commit and rebuild production environment
-                    sh """
-                        ssh -p ${SSH_PORT} ${WSL_USER}@${WSL_HOST} \\
-                        "cd ${PROD_PATH} && git fetch && git checkout ${params.ROLLBACK_VERSION} && docker compose up -d --build"
-                    """
-                }
+                // Checkout specific commit and rebuild artifact
+                sh """
+                    git fetch
+                    git checkout ${params.ROLLBACK_VERSION}
+                    mvn clean package -DskipTests=true
+                """
+                //Copy rolled-back artifact into production
+                sh """
+                    cp -r target/* /mnt/wsl/Ubuntu${PROD_PATH}/
+                """
             }
         }
+        //POST-ROLLBACK HEALTH CHECK
         stage('Post-Rollback Health Check') {
             when { expression { params.ROLLBACK && params.ROLLBACK_VERSION?.trim() } }
             steps {
                 echo "Checking PRODUCTION health after rollback..."
-                // Verify production is healthy after rollback
-                sh "https://${WSL_HOST}:8080/health"
+                sh "curl -f http://localhost:8080/health"
             }
         }
     }
+
+    //POST-BUILD ACTIONS
     post {
         success {
-            echo "Pipeline completed successfully."// Final success message
+            echo "Pipeline completed successfully."
         }
         failure {
-            echo "Pipeline failed. Check logs and consider triggering a rollback."// Failure message
+            echo "Pipeline failed. Check logs and consider triggering a rollback."
         }
         always {
-            echo "Build finished."// Always runs regardless of outcome
+            echo "Build finished."
         }
     }
 }
