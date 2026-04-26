@@ -10,11 +10,11 @@ import java.net.InetSocketAddress;
 public class MathHealth {
 
     public static void start() throws IOException {
-        HttpServer server = HttpServer.create(new InetSocketAddress(9180), 0);
+        HttpServer server = HttpServer.create(new InetSocketAddress(5600), 0);
         server.createContext("/health", new HealthHandler());
         server.setExecutor(null);
         server.start();
-        System.out.println("Health endpoint running at http://localhost:9180/health");
+        System.out.println("Health endpoint running at http://localhost:5600/health");
     }
 
     static class HealthHandler implements HttpHandler {
