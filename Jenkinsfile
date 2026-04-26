@@ -4,7 +4,7 @@ pipeline {
 
     options {
         timestamps()   // Add timestamps to console logs
-        buildDiscarder(logRotator(numToKeepStr: '25'))   // Keep last 20 builds
+        buildDiscarder(logRotator(numToKeepStr: '25'))   // Keep last 25 builds
     }
     parameters {
         // Commit hash used when performing a rollback
@@ -18,8 +18,8 @@ pipeline {
         STAGING_PATH = '/var/www/staging'
         PROD_PATH    = '/var/www/production'
 
-        // Real WSL rootfs path for the Ubuntu distro
-        WSL_ROOT = '/mnt/c/Users/tutor/AppData/Local/wsl/{bb4ccb9f-df89-45ab-a2c2-261679a5d0c3}/rootfs'
+        // Real WSL rootfs path for the Ubuntu-production distro
+        WSL_ROOT = '/mnt/c/WSL/production'
     }
     stages {
         //CHECKOUT Source CODE
@@ -30,6 +30,7 @@ pipeline {
                 git branch: 'main', url: 'https://github.com/FatimaHarrison/Rando.git'
             }
         }
+
         // BUILD APPLICATION (SKIPPED DURING ROLLBACK)
         stage('Build') {
             when { expression { !params.ROLLBACK } }
@@ -43,6 +44,7 @@ pipeline {
                 }
             }
         }
+
         //STATIC ANALYSIS SKIPPED DURING ROLLBACK
         stage('Static Analysis') {
             when { expression { !params.ROLLBACK } }
@@ -51,6 +53,7 @@ pipeline {
                 sh 'mvn -q -DskipTests=true verify'
             }
         }
+
         //DEPLOY STAGING
         stage('Deploy to Staging') {
             when { expression { !params.ROLLBACK } }
@@ -62,8 +65,8 @@ pipeline {
                 """
             }
         }
-        //STAGING SMOKE TESTS
 
+        //STAGING SMOKE TESTS
         stage('Staging Smoke Tests') {
             when { expression { !params.ROLLBACK } }
             steps {
@@ -73,6 +76,7 @@ pipeline {
                 sh "curl -f http://localhost:8081/health"
             }
         }
+
         //MANUAL APPROVAL BEFORE PRODUCTION
         stage('Approve Production Deployment') {
             when { expression { !params.ROLLBACK } }
@@ -82,6 +86,7 @@ pipeline {
                 }
             }
         }
+
         //DEPLOY TO PRODUCTION (LOCAL WSL COPY)
         stage('Deploy to Production') {
             when { expression { !params.ROLLBACK } }
@@ -94,6 +99,7 @@ pipeline {
                 """
             }
         }
+
         //PRODUCTION HEALTH CHECK
         stage('Production Health Check') {
             when { expression { !params.ROLLBACK } }
@@ -102,6 +108,7 @@ pipeline {
                 sh "curl -f http://localhost:8080/health"
             }
         }
+
         //ROLLBACK EXECUTION PATH
         stage('Rollback') {
             when { expression { params.ROLLBACK && params.ROLLBACK_VERSION?.trim() } }
@@ -119,6 +126,7 @@ pipeline {
                 """
             }
         }
+
         //POST-ROLLBACK HEALTH CHECK
         stage('Post-Rollback Health Check') {
             when { expression { params.ROLLBACK && params.ROLLBACK_VERSION?.trim() } }
@@ -128,6 +136,7 @@ pipeline {
             }
         }
     }
+
     //POST-BUILD ACTIONS
     post {
         success {
