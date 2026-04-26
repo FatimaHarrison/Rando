@@ -6,6 +6,7 @@ pipeline {
         timestamps()   // Add timestamps to console logs
         buildDiscarder(logRotator(numToKeepStr: '25'))   // Keep last 25 builds
     }
+
     parameters {
         // Commit hash used when performing a rollback
         string(name: 'ROLLBACK_VERSION', defaultValue: '', description: 'Git commit hash to roll back to')
@@ -13,17 +14,19 @@ pipeline {
         // Boolean flag to switch pipeline into rollback mode
         booleanParam(name: 'ROLLBACK', defaultValue: false, description: 'Perform rollback instead of new deployment')
     }
+
     environment {
-        // Local WSL deployment paths (NOT remote SSH)
+        // Paths INSIDE the Ubuntu-production distro
         STAGING_PATH = '/var/www/staging'
         PROD_PATH    = '/var/www/production'
 
-        // Real WSL rootfs path for the Ubuntu-production distro
-        WSL_ROOT = '/mnt/c/WSL/production'
+        // Jenkins workspace path (Windows side)
+        WORKSPACE_WIN = 'C:/Users/tutor/.jenkins/workspace/Fibonacci CICD'
     }
-    stages {
-        //CHECKOUT Source CODE
 
+    stages {
+
+        //CHECKOUT Source CODE
         stage('Checkout') {
             steps {
                 echo "Checking out source code..."
@@ -59,9 +62,10 @@ pipeline {
             when { expression { !params.ROLLBACK } }
             steps {
                 echo "Deploying build to STAGING environment..."
-                // Copy build artifacts into WSL staging folder
+
+                // Copy artifacts INTO the Ubuntu-production distro
                 sh """
-                    cp -r target/* ${WSL_ROOT}${STAGING_PATH}/
+                    wsl -d Ubuntu-production -- bash -c "cp -r /mnt/c/Users/tutor/.jenkins/workspace/'Fibonacci CICD'/target/* ${STAGING_PATH}/"
                 """
             }
         }
@@ -71,8 +75,6 @@ pipeline {
             when { expression { !params.ROLLBACK } }
             steps {
                 echo "Running smoke tests against STAGING..."
-
-                // Hit local staging endpoint
                 sh "curl -f http://localhost:8081/health"
             }
         }
@@ -87,15 +89,14 @@ pipeline {
             }
         }
 
-        //DEPLOY TO PRODUCTION (LOCAL WSL COPY)
+        //DEPLOY TO PRODUCTION
         stage('Deploy to Production') {
             when { expression { !params.ROLLBACK } }
             steps {
                 echo "Deploying build to PRODUCTION environment..."
 
-                // Copy build artifacts into WSL production folder
                 sh """
-                    cp -r target/* ${WSL_ROOT}${PROD_PATH}/
+                    wsl -d Ubuntu-production -- bash -c "cp -r /mnt/c/Users/tutor/.jenkins/workspace/'Fibonacci CICD'/target/* ${PROD_PATH}/"
                 """
             }
         }
@@ -114,15 +115,15 @@ pipeline {
             when { expression { params.ROLLBACK && params.ROLLBACK_VERSION?.trim() } }
             steps {
                 echo "Rolling back to commit: ${params.ROLLBACK_VERSION}"
-                // Checkout specific commit and rebuild artifact
+
                 sh """
                     git fetch
                     git checkout ${params.ROLLBACK_VERSION}
                     mvn clean package -DskipTests=true
                 """
-                //Copy rolled-back artifact into production
+
                 sh """
-                    cp -r target/* ${WSL_ROOT}${PROD_PATH}/
+                    wsl -d Ubuntu-production -- bash -c "cp -r /mnt/c/Users/tutor/.jenkins/workspace/'Fibonacci CICD'/target/* ${PROD_PATH}/"
                 """
             }
         }
@@ -136,7 +137,6 @@ pipeline {
             }
         }
     }
-
     //POST-BUILD ACTIONS
     post {
         success {
