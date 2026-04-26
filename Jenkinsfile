@@ -4,7 +4,7 @@ pipeline {
 
     options {
         timestamps()   // Add timestamps to console logs
-        buildDiscarder(logRotator(numToKeepStr: '20'))   // Keep last 20 builds
+        buildDiscarder(logRotator(numToKeepStr: '25'))   // Keep last 20 builds
     }
     parameters {
         // Commit hash used when performing a rollback
